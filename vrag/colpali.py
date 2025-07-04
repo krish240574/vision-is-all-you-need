@@ -7,11 +7,13 @@ from vrag.app import app
 img = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "colpali_engine==0.3.0",
+        "colpali-engine==0.3.0",
         "torch",
-        "transformers==4.44.2",
+        #"transformers==4.44.2",
+        "transformers",
         "einops==0.8.0",
         "vidore_benchmark==4.0.1",
+                                "python-dotenv"
     )
     .pip_install("numpy==2.1.1")
     .pip_install("opencv_python_headless==4.10.0.84")
@@ -65,29 +67,30 @@ def create_stringlist_dataset_class(string_list: list[str]):
 
     return DynamicStringListDataset(string_list)
 
-
+cache_vol = modal.Volume.from_name("hf-hub-cache", create_if_missing=True)
 @app.cls(
+                #image=image.env({"HF_HUB_CACHE": "/cache"}),
+    volumes={"/cache": cache_vol},
     gpu="A10G",
-    secrets=[modal.Secret.from_dotenv()],
+                secrets=[modal.Secret.from_name("huggingface-secret")],
+    #secrets=[modal.Secret.from_dotenv()],
     cpu=4,
     timeout=600,
     scaledown_window=300,
     image=img,
 )
 class ColPaliModel:
-    def __init__(self):
-        from transformers import PreTrainedModel
-        from colpali_engine.models import (
-            ColPaliProcessor,
-        )
+    #from transformers import PreTrainedModel
+    #from colpali_engine.models import (
+    #        ColPaliProcessor,
+    #)
+    model_name: str = modal.parameter(default="vidore/colpali-v1.3")
+    #model:  = modal.parameter(default=PreTrainedModel)
+    #token: str = modal.parameter(default="HF_TOKEN")
+    #processor = modal.parameter(ColPaliProcessor)
+    #mock_image = modal.parameter(create_mock_image())
 
-        self.model_name = "vidore/colpali-v1.2"
-        self.model: PreTrainedModel
-        self.token = os.environ.get("HF_TOKEN")
-        self.processor: ColPaliProcessor
-        self.mock_image = self.create_mock_image()
-
-    @modal.build()
+    #@modal.build()
     @modal.enter()
     def load_model(self):
         import torch
@@ -95,6 +98,7 @@ class ColPaliModel:
         from colpali_engine.models import (
             ColPaliProcessor,
         )
+        self.mock_image = self.create_mock_image()
 
         if torch.cuda.is_available() and torch.cuda.mem_get_info()[1] >= 8 * 1024**3:
             device = torch.device("cuda")
@@ -107,7 +111,7 @@ class ColPaliModel:
             self.model_name,
             torch_dtype=torch_type,
             device_map=device,
-            token=self.token,
+            #token=self.token,
         ).eval()
 
         self.processor = cast(
